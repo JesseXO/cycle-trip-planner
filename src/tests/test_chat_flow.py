@@ -5,7 +5,7 @@ from src.api.app import app
 
 def test_chat_returns_conversation_id_and_reply():
     client = TestClient(app)
-    resp = client.post("/chat", json={"message": "I want to cycle from Amsterdam to Copenhagen. Traveling in June."})
+    resp = client.post("/api/v1/chat", json={"message": "I want to cycle from Amsterdam to Copenhagen. Traveling in June."})
     assert resp.status_code == 200
     data = resp.json()
     assert "conversation_id" in data and data["conversation_id"]

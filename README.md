@@ -109,7 +109,7 @@ pytest
 
 ## API
 
-### `POST /chat` (alias for `/api/v1/chat`)
+### `POST /api/v1/chat`
 
 ```json
 {

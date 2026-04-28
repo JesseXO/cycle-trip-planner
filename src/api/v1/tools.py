@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from src.agent.runtime import Runtime
-from src.api.v1.dependencies import get_runtime
+from src.api.deps import get_runtime
 from src.tools.check_visa_requirements import VisaRequirementsInput, VisaRequirementsOutput
 from src.tools.estimate_budget import EstimateBudgetInput, EstimateBudgetOutput
 from src.tools.get_points_of_interest import PointsOfInterestInput, PointsOfInterestOutput
@@ -28,4 +28,3 @@ def visa_requirements(req: VisaRequirementsInput, rt: Runtime = Depends(get_runt
 def budget(req: EstimateBudgetInput, rt: Runtime = Depends(get_runtime)) -> EstimateBudgetOutput:
     out = rt.orchestrator_v1.registry.dispatch("estimate_budget", req.model_dump())
     return EstimateBudgetOutput.model_validate(out)
-

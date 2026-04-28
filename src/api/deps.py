@@ -8,4 +8,3 @@ from src.agent.runtime import Runtime, build_runtime
 @lru_cache(maxsize=1)
 def get_runtime() -> Runtime:
     return build_runtime()
-

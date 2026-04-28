@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from src.agent.runtime import Runtime
-from src.api.v1.dependencies import get_runtime
+from src.api.deps import get_runtime
 from src.api.v1.schemas import ChatV1Request, ChatV1Response, ToolCallView
 
 

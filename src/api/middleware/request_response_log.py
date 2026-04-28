@@ -13,7 +13,6 @@ from src.logger.logging import get_logger
 
 logger = get_logger("cycling_trip_planner.api")
 LOGGED_PATH_PREFIXES = ("/api/",)
-LOGGED_PATHS = {"/chat"}
 
 
 class RequestResponseLogMiddleware(BaseHTTPMiddleware):
@@ -41,7 +40,7 @@ class RequestResponseLogMiddleware(BaseHTTPMiddleware):
 
 
 def _should_log(path: str) -> bool:
-    return path in LOGGED_PATHS or any(path.startswith(p) for p in LOGGED_PATH_PREFIXES)
+    return any(path.startswith(p) for p in LOGGED_PATH_PREFIXES)
 
 
 async def _read_body(request: Request, max_bytes: int) -> bytes:

@@ -13,7 +13,6 @@ class LLMProviderName(str, Enum):
 
 class CoreSettings(BaseModel):
     api_title: str = "Cycling Trip Planner Agent"
-    api_version: str = "1.0.0"
 
     llm_provider: LLMProviderName = Field(default=LLMProviderName.anthropic, alias="LLM_PROVIDER")
     llm_model: str = Field(default="claude-sonnet-4-6", alias="LLM_MODEL")
