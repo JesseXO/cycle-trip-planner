@@ -19,7 +19,6 @@ class ToolSpec:
     handler: Callable[[BaseModel], BaseModel]
 
     def schema_for_llm(self) -> dict[str, Any]:
-        # Anthropic tools accept JSON-schema-ish "input_schema".
         return {
             "name": self.name,
             "description": self.description,
@@ -43,7 +42,7 @@ class ToolRegistry:
         tool = self.get(tool_name)
         try:
             parsed = tool.input_model.model_validate(tool_input)
-        except Exception as e:  # pragma: no cover
+        except Exception as e:
             raise ToolError(f"Invalid input for {tool_name}: {e}") from e
 
         try:

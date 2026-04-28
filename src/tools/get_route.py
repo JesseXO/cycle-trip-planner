@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from src.config.runtime import get_settings
+
 
 class RoutePoint(BaseModel):
     name: str
@@ -27,26 +29,27 @@ class GetRouteOutput(BaseModel):
 
 
 def _fake_coord(seed: str) -> tuple[float, float]:
+    s = get_settings()
     h = hashlib.sha256(seed.encode("utf-8")).hexdigest()
-    # Map to Europe-ish bounding box (roughly)
-    lat = 47.0 + (int(h[:8], 16) % 9000) / 1000.0  # 47..56
-    lon = 4.0 + (int(h[8:16], 16) % 17000) / 1000.0  # 4..21
+    lat = s.mock_coord_lat_min + (int(h[:8], 16) % int(s.mock_coord_lat_span * 1000)) / 1000.0
+    lon = s.mock_coord_lon_min + (int(h[8:16], 16) % int(s.mock_coord_lon_span * 1000)) / 1000.0
     return lat, lon
 
 
 def get_route(inp: GetRouteInput) -> GetRouteOutput:
-    # Deterministic mock: distance derived from hash (but within plausible range)
+    s = get_settings()
     h = int(hashlib.sha256(f"{inp.origin}->{inp.destination}".encode("utf-8")).hexdigest()[:8], 16)
-    total_distance_km = 450.0 + (h % 65000) / 100.0  # 450..1100
+    total_distance_km = s.mock_route_distance_min_km + (h % int(s.mock_route_distance_span_km * 100)) / 100.0
 
-    # Create 6 intermediate waypoints including endpoints
-    points = [inp.origin, "Waypoint_1", "Waypoint_2", "Waypoint_3", "Waypoint_4", inp.destination]
+    n = s.mock_route_waypoint_count
+    mid = [f"Waypoint_{i}" for i in range(1, max(0, n - 2) + 1)]
+    points = [inp.origin, *mid, inp.destination]
     waypoints: list[RoutePoint] = []
     for p in points:
         lat, lon = _fake_coord(f"{inp.origin}|{inp.destination}|{p}")
         waypoints.append(RoutePoint(name=p, lat=lat, lon=lon))
 
-    suggested_days = max(2, round(total_distance_km / 100.0))
+    suggested_days = max(s.mock_route_min_days, round(total_distance_km / float(s.mock_route_default_daily_km)))
     return GetRouteOutput(
         origin=inp.origin,
         destination=inp.destination,

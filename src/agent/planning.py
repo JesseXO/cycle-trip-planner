@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from src.api.models import DayPlan, TripPreferences
+from src.config.runtime import get_settings
 from src.tools.builtins import build_registry
 
 
@@ -38,13 +39,10 @@ def lodging_kind_for_night(preferences: TripPreferences, day: int) -> Literal["c
 
 
 def build_day_by_day_plan(preferences: TripPreferences) -> list[DayPlan]:
-    """
-    Deterministic planner using the mock tools.
-    Used both for non-LLM fallback and as a reference format.
-    """
     if not (preferences.origin and preferences.destination and preferences.daily_km and preferences.month):
         raise ValueError("Missing required preferences to build a plan.")
 
+    s = get_settings()
     registry = build_registry()
     route = registry.dispatch(
         "get_route",
@@ -71,8 +69,9 @@ def build_day_by_day_plan(preferences: TripPreferences) -> list[DayPlan]:
             else "No accommodation options found."
         )
 
-        pois = registry.dispatch("get_points_of_interest", {"near": seg.end, "category": "any", "limit": 4})
-        highlights = [p.name for p in getattr(pois, "items", [])][:4]
+        poi_limit = int(s.plan_poi_per_day)
+        pois = registry.dispatch("get_points_of_interest", {"near": seg.end, "category": "any", "limit": poi_limit})
+        highlights = [p.name for p in getattr(pois, "items", [])][:poi_limit]
 
         plans.append(
             DayPlan(
@@ -94,6 +93,7 @@ def build_day_by_day_plan(preferences: TripPreferences) -> list[DayPlan]:
 def format_plan_markdown(plan: list[DayPlan], *, preferences: TripPreferences | None = None) -> str:
     lines: list[str] = []
     if preferences and preferences.origin and preferences.destination:
+        s = get_settings()
         lines.append(f"## Trip summary: {preferences.origin} → {preferences.destination}")
         if preferences.daily_km:
             lines.append(f"- **Target pace**: ~{preferences.daily_km} km/day")
@@ -107,19 +107,18 @@ def format_plan_markdown(plan: list[DayPlan], *, preferences: TripPreferences | 
             )
             lines.append(f"- **Lodging**: {preferences.lodging_preference}{cadence}")
 
-        # Optional: budget + visa
         try:
             reg = build_registry()
             budget = reg.dispatch(
                 "estimate_budget",
                 {
                     "days": len(plan),
-                    "daily_distance_km": preferences.daily_km or 100,
+                    "daily_distance_km": preferences.daily_km or s.mock_route_default_daily_km,
                     "lodging_style": preferences.lodging_preference,
-                    "food_style": "balanced",
+                    "food_style": s.plan_food_style,
                 },
             )
-            lines.append(f"- **Budget (mock)**: ~€{budget.estimated_total} total for {budget.days} days")
+            lines.append(f"- **Budget (mock)**: ~{budget.currency} {budget.estimated_total} total for {budget.days} days")
         except Exception:
             pass
 

@@ -30,7 +30,6 @@ class AgentOrchestrator:
 
         updated.messages.append({"role": "user", "content": user_message})
 
-        # If provider is mock or provider errors, fall back to deterministic planner when possible.
         claude_messages = [{"role": m["role"], "content": m["content"]} for m in updated.messages]
         reply, new_history = run_claude_with_tools(
             messages=claude_messages,
@@ -40,7 +39,6 @@ class AgentOrchestrator:
             max_tokens=self.settings.max_tokens,
         )
 
-        # Store only user-visible text messages
         updated.messages = []
         for m in new_history:
             if m.get("role") == "user" and isinstance(m.get("content"), str):
@@ -48,7 +46,6 @@ class AgentOrchestrator:
 
         updated.messages.append({"role": "assistant", "content": reply})
 
-        # If provider reply is an error, attempt deterministic plan if we have enough info.
         if reply.startswith("LLM API error:"):
             try:
                 plan = build_day_by_day_plan(updated.preferences)

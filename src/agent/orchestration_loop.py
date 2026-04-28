@@ -11,7 +11,6 @@ from src.tools.registry import ToolError, ToolRegistry
 def _extract_text_from_content(content: list[Any]) -> str:
     parts: list[str] = []
     for block in content:
-        # SDK returns rich blocks with `.type` attr; but keep dict fallback
         btype = getattr(block, "type", None) or (block.get("type") if isinstance(block, dict) else None)
         if btype == "text":
             txt = getattr(block, "text", None) or (block.get("text") if isinstance(block, dict) else "")
@@ -35,11 +34,6 @@ def run_claude_with_tools(
     provider: LLMProvider | None = None,
     max_tokens: int = 900,
 ) -> tuple[str, list[dict[str, Any]]]:
-    """
-    Executes a bounded Claude tool-use loop.
-
-    Returns: (assistant_text_reply, appended_messages)
-    """
     registry = registry or build_registry()
     if provider is None:
         raise ValueError("provider is required")
@@ -51,10 +45,8 @@ def run_claude_with_tools(
         try:
             msg = provider.create_message(system=SYSTEM_PROMPT, messages=history, tools=tools, max_tokens=max_tokens)
         except Exception as e:
-            # Surface common provider issues (e.g. invalid model name / auth) as a user-facing message.
             return f"LLM API error: {e}", history
 
-        # assistant message content can include tool_use blocks
         assistant_content = msg.content
         history.append({"role": "assistant", "content": assistant_content})
 

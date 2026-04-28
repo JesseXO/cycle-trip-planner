@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/v0", tags=["v0"])
 @router.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, rt: Runtime = Depends(get_runtime)) -> ChatResponse:
     state = rt.store.get_or_create(req.conversation_id)
-    reply, updated = rt.orchestrator.handle_turn(state=state, user_message=req.message)
+    reply, updated = rt.orchestrator_v0.handle_turn(state=state, user_message=req.message)
     rt.store.save(updated)
     return ChatResponse(conversation_id=updated.conversation_id, reply=reply)
 

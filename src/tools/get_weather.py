@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 from pydantic import BaseModel, Field
 
+from src.config.runtime import get_settings
+
 
 class GetWeatherInput(BaseModel):
     location: str = Field(min_length=2)
@@ -19,10 +21,11 @@ class GetWeatherOutput(BaseModel):
 
 
 def get_weather(inp: GetWeatherInput) -> GetWeatherOutput:
+    s = get_settings()
     h = int(hashlib.sha256(f"{inp.location}|{inp.month}".encode("utf-8")).hexdigest()[:8], 16)
-    avg_high = 16 + (h % 12)  # 16..27
-    avg_low = avg_high - (6 + (h % 3))  # -6..-8 delta
-    rain = 35 + (h % 70)  # 35..104
+    avg_high = s.mock_weather_high_base_c + (h % max(1, s.mock_weather_high_span_c))
+    avg_low = avg_high - (s.mock_weather_low_delta_base_c + (h % max(1, s.mock_weather_low_delta_span_c)))
+    rain = s.mock_weather_rain_base_mm + (h % max(1, s.mock_weather_rain_span_mm))
     summary = f"Typical {inp.month} weather: mild to warm, with a chance of rain."
     return GetWeatherOutput(
         location=inp.location,

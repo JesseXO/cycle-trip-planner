@@ -6,10 +6,6 @@ from src.agent.providers.base import LLMProvider, LLMResponse
 
 
 class MockProvider(LLMProvider):
-    """
-    Deterministic provider for tests: always returns a plain text response.
-    """
-
     def __init__(self, reply: str = "OK (mock)."):
         self._reply = reply
 

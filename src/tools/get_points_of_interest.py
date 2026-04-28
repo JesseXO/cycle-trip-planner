@@ -5,11 +5,13 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from src.config.runtime import get_settings
+
 
 class PointsOfInterestInput(BaseModel):
     near: str = Field(min_length=2, description="City or waypoint name")
     category: Literal["sights", "food", "bike_shops", "nature", "museums", "any"] = "any"
-    limit: int = Field(default=6, ge=1, le=20)
+    limit: int = Field(default_factory=lambda: get_settings().mock_poi_default_limit, ge=1, le=20)
 
 
 class PointOfInterest(BaseModel):
@@ -25,18 +27,19 @@ class PointsOfInterestOutput(BaseModel):
 
 
 def get_points_of_interest(inp: PointsOfInterestInput) -> PointsOfInterestOutput:
+    s = get_settings()
     seed = int(hashlib.sha256(f"{inp.near}|{inp.category}".encode("utf-8")).hexdigest()[:8], 16)
-    categories = ["sights", "food", "bike_shops", "nature", "museums"]
+    categories = s.mock_poi_categories
     cat = inp.category if inp.category != "any" else categories[seed % len(categories)]
 
     items: list[PointOfInterest] = []
     for i in range(inp.limit):
-        n = (seed + i * 97) % 1000
+        n = (seed + i * s.mock_poi_step) % s.mock_poi_seed_mod
         items.append(
             PointOfInterest(
                 name=f"{inp.near} {cat.replace('_', ' ').title()} #{i+1}",
                 category=cat,
-                note=f"Mock suggestion (id {n}) — good for a short stop.",
+                note=f"Mock suggestion (id {n}).",
             )
         )
 

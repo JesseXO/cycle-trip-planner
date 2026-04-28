@@ -23,7 +23,6 @@ def test_factory_builds_mock(monkeypatch):
 
 def test_factory_missing_anthropic_key(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "anthropic")
-    # Settings also reads from `.env`, so explicitly blank the key.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     s = Settings()
     with pytest.raises(ValueError):

@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from src.config.runtime import get_settings
+
 
 class GetElevationProfileInput(BaseModel):
     origin: str = Field(min_length=2)
@@ -20,11 +22,12 @@ class GetElevationProfileOutput(BaseModel):
 
 
 def get_elevation_profile(inp: GetElevationProfileInput) -> GetElevationProfileOutput:
+    s = get_settings()
     h = int(hashlib.sha256(f"{inp.origin}->{inp.destination}".encode("utf-8")).hexdigest()[:8], 16)
-    gain = int((h % 1800) + inp.distance_km * 4)  # distance influences gain
-    if gain < 900:
+    gain = int((h % s.mock_elev_hash_mod_m) + inp.distance_km * float(s.mock_elev_gain_per_km))
+    if gain < s.mock_elev_easy_max_m:
         difficulty = "easy"
-    elif gain < 1800:
+    elif gain < s.mock_elev_moderate_max_m:
         difficulty = "moderate"
     else:
         difficulty = "hard"

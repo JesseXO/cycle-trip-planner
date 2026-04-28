@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from src.config.runtime import get_settings
+
 
 class EstimateBudgetInput(BaseModel):
     days: int = Field(ge=1, le=90)
@@ -14,36 +16,40 @@ class EstimateBudgetInput(BaseModel):
 
 class EstimateBudgetOutput(BaseModel):
     days: int
-    currency: Literal["EUR"] = "EUR"
+    currency: str
     estimated_total: int
     breakdown_per_day: dict[str, int]
     notes: str
 
 
 def estimate_budget(inp: EstimateBudgetInput) -> EstimateBudgetOutput:
-    # Mock assumptions in EUR/day
+    s = get_settings()
     lodging = {
-        "camping": 18,
-        "hostel": 40,
-        "hotel": 100,
-        "mixed": 45,
+        "camping": s.mock_budget_lodging_camping,
+        "hostel": s.mock_budget_lodging_hostel,
+        "hotel": s.mock_budget_lodging_hotel,
+        "mixed": s.mock_budget_lodging_mixed,
     }[inp.lodging_style]
-    food = {"budget": 18, "balanced": 28, "treats": 40}[inp.food_style]
+    food = {
+        "budget": s.mock_budget_food_budget,
+        "balanced": s.mock_budget_food_balanced,
+        "treats": s.mock_budget_food_treats,
+    }[inp.food_style]
 
-    # Small variable cost: snacks/maintenance scale with distance
-    variable = int(round(inp.daily_distance_km * 0.12))  # ~€12 at 100km
+    variable = int(round(inp.daily_distance_km * float(s.mock_budget_variable_per_km)))
 
     per_day = {
         "lodging": lodging,
         "food": food,
         "snacks_maintenance": variable,
-        "misc": 8,
+        "misc": s.mock_budget_misc_per_day,
     }
     total = inp.days * sum(per_day.values())
     return EstimateBudgetOutput(
         days=inp.days,
+        currency=s.mock_budget_currency,
         estimated_total=int(total),
         breakdown_per_day=per_day,
-        notes="Mock budget estimate in EUR. Real costs vary by country, season, and booking flexibility.",
+        notes="Mock estimate. Real costs vary.",
     )
 

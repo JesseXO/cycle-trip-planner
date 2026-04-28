@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from src.config.runtime import get_settings
+
 
 class VisaRequirementsInput(BaseModel):
     nationality: str = Field(min_length=2, description="Traveler nationality, e.g. 'Canadian'")
@@ -20,17 +22,16 @@ class VisaRequirementsOutput(BaseModel):
 
 
 def check_visa_requirements(inp: VisaRequirementsInput) -> VisaRequirementsOutput:
-    # Mock, intentionally conservative.
-    # We assume Schengen-like rules for many EU trips; in real integration we'd use a policy DB/API.
+    s = get_settings()
     dest = inp.destination_country.lower()
     nat = inp.nationality.lower()
 
-    if dest in {"netherlands", "denmark", "germany", "belgium", "france", "sweden", "norway"} and inp.stay_days <= 90:
+    if dest in set(s.mock_visa_schengen_countries) and inp.stay_days <= s.mock_visa_max_days_no_visa:
         requirement = "unknown" if nat.strip() == "" else "likely_not_required"
-        notes = "Mock result. For many nationalities, short stays (<=90 days) in Schengen area may not require a visa, but verify officially."
+        notes = "Mock result. Verify officially."
     else:
         requirement = "may_be_required"
-        notes = "Mock result. Visa requirements vary by nationality and destination; verify with official government sources."
+        notes = "Mock result. Verify officially."
 
     return VisaRequirementsOutput(
         nationality=inp.nationality,

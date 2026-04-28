@@ -16,6 +16,13 @@ def test_v0_and_v1_routes_exist():
     client = TestClient(app)
     r0 = client.post("/api/v0/chat", json={"message": "Hello"})
     assert r0.status_code == 200
+    assert "Tell me" in r0.json()["reply"]
     r1 = client.post("/api/v1/chat", json={"message": "Hello"})
     assert r1.status_code == 200
+
+
+def test_v1_tools_routes_exist():
+    client = TestClient(app)
+    r = client.post("/api/v1/tools/points_of_interest", json={"near": "Copenhagen", "category": "any", "limit": 3})
+    assert r.status_code == 200
 

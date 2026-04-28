@@ -6,7 +6,6 @@ import uuid
 BASE_URL = "http://localhost:8000"
 API_PATH = "/api/v1/chat"
 
-# 🌐 Page config
 st.set_page_config(
     page_title="Cycling Trip Planner",
     page_icon="🚴",
@@ -14,22 +13,19 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# 📂 Initialize session state
 if "chat_sessions" not in st.session_state:
     st.session_state.chat_sessions = {}
 
 if "current_chat_id" not in st.session_state:
     st.session_state.current_chat_id = str(uuid.uuid4())
 
-# Per-session backend conversation_id (keeps agent context across turns)
 if "conversation_ids" not in st.session_state:
     st.session_state.conversation_ids = {}
 
-# ✨ Sidebar (reduced height by scrolling container)
 with st.sidebar:
     st.markdown("## 💬 Chat Sessions")
     with st.container():
-        with st.expander("View Sessions", expanded=False):  # collapse by default
+        with st.expander("View Sessions", expanded=False):
             delete_keys = []
             for chat_id, data in st.session_state.chat_sessions.items():
                 col1, col2 = st.columns([0.85, 0.15])
@@ -71,27 +67,80 @@ with st.sidebar:
     if st.button("Reset conversation (this chat)"):
         st.session_state.conversation_ids[st.session_state.current_chat_id] = None
 
-# 💬 Load messages
 if st.session_state.current_chat_id not in st.session_state.chat_sessions:
     st.session_state.chat_sessions[st.session_state.current_chat_id] = {"title": "New Chat", "messages": []}
 
 chat_data = st.session_state.chat_sessions[st.session_state.current_chat_id]
 conversation_id = st.session_state.conversation_ids.get(st.session_state.current_chat_id)
 
-# 🎨 Header
 st.markdown("<h1 style='text-align: center; color: #2E7D32;'>🚴 Cycling Trip Planner Agent</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center;'>Plan a multi-day cycling trip via chat</p>", unsafe_allow_html=True)
 st.divider()
 
-# 🛅 User input
 st.markdown("### Start chatting")
 st.markdown("*Example:* `I want to cycle from Amsterdam to Copenhagen. I can do ~100km/day. Prefer camping but want a hostel every 4th night. Traveling in June.`")
+
+tool_tab, chat_tab = st.tabs(["Tools", "Chat"])
+
+with tool_tab:
+    st.markdown("### Optional tools")
+    tool = st.selectbox("Tool", ["get_points_of_interest", "check_visa_requirements", "estimate_budget"])
+
+    if tool == "get_points_of_interest":
+        with st.form("poi_form"):
+            near = st.text_input("Near", value="Copenhagen")
+            category = st.selectbox("Category", ["any", "sights", "food", "bike_shops", "nature", "museums"])
+            limit = st.number_input("Limit", min_value=1, max_value=20, value=6, step=1)
+            ok = st.form_submit_button("Run")
+        if ok:
+            r = requests.post(
+                f"{BASE_URL}/api/v1/tools/points_of_interest",
+                json={"near": near, "category": category, "limit": int(limit)},
+                timeout=60,
+            )
+            st.json(r.json())
+
+    if tool == "check_visa_requirements":
+        with st.form("visa_form"):
+            nationality = st.text_input("Nationality", value=pref_nationality or "Canadian")
+            destination_country = st.text_input("Destination country", value="Denmark")
+            stay_days = st.number_input("Stay days", min_value=1, max_value=365, value=14, step=1)
+            ok = st.form_submit_button("Run")
+        if ok:
+            r = requests.post(
+                f"{BASE_URL}/api/v1/tools/visa_requirements",
+                json={"nationality": nationality, "destination_country": destination_country, "stay_days": int(stay_days)},
+                timeout=60,
+            )
+            st.json(r.json())
+
+    if tool == "estimate_budget":
+        with st.form("budget_form"):
+            days = st.number_input("Days", min_value=1, max_value=90, value=7, step=1)
+            daily_distance_km = st.number_input("Daily km", min_value=20, max_value=300, value=int(pref_daily_km), step=5)
+            lodging_style = st.selectbox("Lodging style", ["mixed", "camping", "hostel", "hotel"])
+            food_style = st.selectbox("Food style", ["balanced", "budget", "treats"])
+            ok = st.form_submit_button("Run")
+        if ok:
+            r = requests.post(
+                f"{BASE_URL}/api/v1/tools/estimate_budget",
+                json={
+                    "days": int(days),
+                    "daily_distance_km": int(daily_distance_km),
+                    "lodging_style": lodging_style,
+                    "food_style": food_style,
+                },
+                timeout=60,
+            )
+            st.json(r.json())
+
+with chat_tab:
+    st.markdown("### Chat")
 
 with st.form(key="chat_form", clear_on_submit=True):
     user_input = st.text_input("Message", placeholder="Type your trip request or an adjustment…")
     submit_button = st.form_submit_button("Send")
 
-# 🧠 Process input
 if submit_button and user_input.strip():
     with st.spinner("Planning..."):
         try:
@@ -118,7 +167,6 @@ if submit_button and user_input.strip():
                 }
                 chat_data["messages"].append(message)
 
-                # ✨ Dynamic title generation
                 suggested_title = user_input.strip()
                 if len(suggested_title) > 30:
                     suggested_title = suggested_title[:27] + "..."
@@ -129,7 +177,6 @@ if submit_button and user_input.strip():
         except Exception as e:
             st.error(f"Request failed due to: {e}")
 
-# 🧴 Show chat
 if chat_data["messages"]:
     for msg in chat_data["messages"]:
         with st.chat_message("user"):
@@ -139,6 +186,5 @@ if chat_data["messages"]:
 else:
     st.info("Start a chat to build your cycling itinerary.")
 
-# 🔻 Footer
 st.markdown("---")
 st.markdown("<p style='text-align: center;'>Cycling Trip Planner Agent (demo UI)</p>", unsafe_allow_html=True)
