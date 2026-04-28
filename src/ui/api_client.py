@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import requests
 
-from src.ui.constants import CHAT_PATH, HEALTH_PATH, REQUEST_TIMEOUT_S
+from src.ui.constants import CHAT_PATH, HEALTH_CHECK_TIMEOUT_S, HEALTH_PATH, REQUEST_TIMEOUT_S
 
 
 def health(backend_url: str) -> dict | None:
     try:
-        r = requests.get(f"{backend_url}{HEALTH_PATH}", timeout=3)
+        r = requests.get(f"{backend_url}{HEALTH_PATH}", timeout=HEALTH_CHECK_TIMEOUT_S)
     except Exception:
         return None
     return r.json() if r.status_code == 200 else None

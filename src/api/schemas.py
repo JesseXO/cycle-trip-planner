@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from src.api.models import TripPreferences
 
 
-class ChatV1Request(BaseModel):
+class ChatRequest(BaseModel):
     conversation_id: str | None = None
     message: str = Field(min_length=1)
     preferences: TripPreferences | None = None
@@ -20,7 +20,7 @@ class ToolCallView(BaseModel):
     is_error: bool = False
 
 
-class ChatV1Response(BaseModel):
+class ChatResponse(BaseModel):
     conversation_id: str
     reply: str
     tool_calls: list[ToolCallView] = Field(default_factory=list)

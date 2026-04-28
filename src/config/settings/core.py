@@ -32,3 +32,5 @@ class CoreSettings(BaseModel):
     rate_limit_enabled: bool = Field(default=True, alias="RATE_LIMIT_ENABLED")
     rate_limit_requests: int = Field(default=60, ge=1, le=100000, alias="RATE_LIMIT_REQUESTS")
     rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600, alias="RATE_LIMIT_WINDOW_SECONDS")
+
+    log_max_body_bytes: int = Field(default=40_000, ge=0, le=10_000_000, alias="LOG_MAX_BODY_BYTES")

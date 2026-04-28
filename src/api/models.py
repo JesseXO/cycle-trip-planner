@@ -34,13 +34,3 @@ class ConversationState(BaseModel):
     messages: list[dict] = Field(default_factory=list)
     last_plan: Optional[list[DayPlan]] = None
 
-
-class ChatRequest(BaseModel):
-    conversation_id: Optional[str] = None
-    message: str = Field(min_length=1)
-
-
-class ChatResponse(BaseModel):
-    conversation_id: str
-    reply: str
-

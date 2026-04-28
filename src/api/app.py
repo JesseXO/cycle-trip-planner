@@ -16,7 +16,11 @@ def create_app() -> FastAPI:
     rt = get_runtime()
     app = FastAPI(title=rt.settings.api_title, version=get_version())
 
-    app.add_middleware(RequestResponseLogMiddleware, enabled=True)
+    app.add_middleware(
+        RequestResponseLogMiddleware,
+        enabled=True,
+        max_log_bytes=rt.settings.log_max_body_bytes,
+    )
     app.add_middleware(
         RateLimitMiddleware,
         enabled=rt.settings.rate_limit_enabled,

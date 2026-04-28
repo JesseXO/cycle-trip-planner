@@ -4,14 +4,14 @@ from fastapi import APIRouter, Depends
 
 from src.agent.runtime import Runtime
 from src.api.deps import get_runtime
-from src.api.v1.schemas import ChatV1Request, ChatV1Response, ToolCallView
+from src.api.schemas import ChatRequest, ChatResponse, ToolCallView
 
 
 router = APIRouter(tags=["v1"])
 
 
-@router.post("/chat", response_model=ChatV1Response)
-def chat(req: ChatV1Request, rt: Runtime = Depends(get_runtime)) -> ChatV1Response:
+@router.post("/chat", response_model=ChatResponse)
+def chat(req: ChatRequest, rt: Runtime = Depends(get_runtime)) -> ChatResponse:
     state = rt.store.get_or_create(req.conversation_id)
     result, updated = rt.orchestrator_v1.handle_turn(
         state=state,
@@ -24,7 +24,7 @@ def chat(req: ChatV1Request, rt: Runtime = Depends(get_runtime)) -> ChatV1Respon
         ToolCallView(name=t.name, input=t.input, output=t.output, is_error=t.is_error)
         for t in result.tool_calls
     ]
-    return ChatV1Response(
+    return ChatResponse(
         conversation_id=updated.conversation_id,
         reply=result.reply,
         tool_calls=tool_calls,

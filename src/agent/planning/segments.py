@@ -15,16 +15,17 @@ def split_into_daily_segments(
     destination: str,
     total_distance_km: float,
     daily_km: int,
+    *,
+    min_days: int,
+    distance_decimals: int,
 ) -> list[Segment]:
-    days = max(1, round(total_distance_km / max(1, daily_km)))
-    if days < 2:
-        days = 2
+    days = max(min_days, round(total_distance_km / max(1, daily_km)))
 
     base = total_distance_km / days
     segments: list[Segment] = []
     prev = origin
     for i in range(1, days + 1):
         nxt = destination if i == days else f"Day{i}_Stop"
-        segments.append(Segment(start=prev, end=nxt, distance_km=round(base, 1)))
+        segments.append(Segment(start=prev, end=nxt, distance_km=round(base, distance_decimals)))
         prev = nxt
     return segments
