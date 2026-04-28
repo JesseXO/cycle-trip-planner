@@ -8,11 +8,13 @@ from src.api.middleware.request_response_log import RequestResponseLogMiddleware
 from src.api.v0 import router as v0_router
 from src.api.v1 import router as v1_router
 from src.api.v1.dependencies import get_runtime
+from src.api.v1.routes.chat import chat as v1_chat
 
 
 def create_app() -> FastAPI:
     rt = get_runtime()
     app = FastAPI(title=rt.settings.api_title, version=rt.settings.api_version)
+
     app.add_middleware(RequestResponseLogMiddleware, enabled=True)
     app.add_middleware(
         RateLimitMiddleware,
@@ -27,13 +29,22 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
     app.include_router(v0_router)
     app.include_router(v1_router)
-    from src.api.v1.routes.chat import chat as v1_chat
-
     app.add_api_route("/chat", endpoint=v1_chat, methods=["POST"])
+
+    @app.get("/health", tags=["meta"])
+    def health() -> dict:
+        return {
+            "status": "ok",
+            "api": rt.settings.api_title,
+            "version": rt.settings.api_version,
+            "provider": rt.settings.llm_provider.value,
+            "model": rt.settings.llm_model,
+        }
+
     return app
 
 
 app = create_app()
-

@@ -1,2 +1,0 @@
-from src.api.v1.routes.chat import router
-

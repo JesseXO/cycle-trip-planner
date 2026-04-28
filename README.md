@@ -1,124 +1,120 @@
 # Cycling Trip Planner Agent
 
-Build an AI agent that helps a cyclist plan a multi-day bike trip through conversation.
+A conversational AI agent that helps cyclists plan multi-day bike trips. It asks clarifying questions, calls typed tools to gather route, terrain, weather, accommodation, POI, budget, and visa data, then assembles a day-by-day itinerary — and adapts when the user changes their preferences mid-conversation.
 
-Example input:
+> _"I want to cycle from Amsterdam to Copenhagen. I can do around 100km a day, prefer camping but want a hostel every 4th night. Traveling in June."_
 
-> “I want to cycle from Amsterdam to Copenhagen. I can do around 100km a day, prefer camping but want a hostel every 4th night. Traveling in June.”
+## Stack
 
-## Tech stack
-- **FastAPI** (API)
-- **Pydantic** (validation)
-- **Anthropic Claude** (LLM tool-use)
-- **Mock tools** (we’re testing architecture, not external API integration)
+- **Python 3.10+**, FastAPI, Pydantic v2
+- **Anthropic Claude** with tool-use (default: `claude-sonnet-4-6`)
+- **Streamlit** chat UI
+- **Mock tools** (the case study explicitly tests architecture, not external integration)
 
-## Project structure
-- `src/api`: FastAPI app + `/chat` + in-memory state
-- `src/agent`: prompts + Claude client + orchestration loop + planning utilities
-- `src/tools`: typed tools + registry/dispatcher (mock implementations)
-- `src/tests`: basic unit tests + chat flow smoke test
+## Project layout
+
+```
+src/
+├── agent/
+│   ├── orchestration_loop.py     # bounded tool-use loop, returns structured result
+│   ├── v1_orchestrator.py        # LLM-driven turn handler (default)
+│   ├── v0_orchestrator.py        # deterministic fallback (no LLM, used by /api/v0)
+│   ├── runtime.py                # composes settings + provider + registry + store
+│   ├── prompts/system.md         # system prompt (file, not string literal)
+│   └── providers/                # LLMProvider Protocol + Anthropic + Mock impls
+├── tools/
+│   ├── registry.py               # ToolSpec + ToolRegistry + dispatcher
+│   ├── builtins.py               # registry composition
+│   ├── get_route.py
+│   ├── get_elevation_profile.py
+│   ├── get_weather.py
+│   ├── find_accommodation.py
+│   ├── get_points_of_interest.py
+│   ├── check_visa_requirements.py
+│   └── estimate_budget.py
+├── api/
+│   ├── app.py                    # FastAPI app factory + middleware wiring
+│   ├── models.py                 # ConversationState, TripPreferences, DayPlan
+│   ├── middleware/               # rate limit + request/response logging
+│   ├── v0/                       # deterministic chat + per-tool POSTs
+│   └── v1/                       # LLM-driven chat + optional-tool POSTs
+├── state/                        # ConversationStore Protocol + in-memory impl
+├── config/settings.py            # pydantic-settings, env-overridable
+├── logger/                       # structured logger
+├── exception/                    # request-level error handling
+├── scripts/                      # backend.sh, frontend.sh, dev.sh
+└── tests/                        # 20 tests including multi-step orchestration
+streamlit_app.py                  # chat UI
+```
 
 ## Tools implemented
-- **Required**:
-  - `get_route`
-  - `find_accommodation`
-  - `get_weather`
-  - `get_elevation_profile`
-- **Optional (bonus)**:
-  - `get_points_of_interest`
-  - `check_visa_requirements`
-  - `estimate_budget`
+
+| Tool | Required | Purpose |
+|---|---|---|
+| `get_route` | ✅ | Route between two points: distance, waypoints, suggested days |
+| `find_accommodation` | ✅ | Camping / hostel / hotel near a location |
+| `get_weather` | ✅ | Typical weather for a location and month |
+| `get_elevation_profile` | ✅ | Elevation gain + difficulty rating between points |
+| `get_points_of_interest` | bonus | Daily highlights (sights, food, bike shops, nature, museums) |
+| `check_visa_requirements` | bonus | Visa note based on nationality + destination + stay days |
+| `estimate_budget` | bonus | Trip budget given days, daily km, lodging style, food style |
+
+Every tool has Pydantic input/output models and is dispatched through a single typed registry, so adding a new tool is one file plus one line.
 
 ## Run locally
-### 1) Create a virtualenv
+
+### 1. Install
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-```
-
-### 2) Install dependencies
-
-```bash
 pip install -r requirements.txt
 ```
 
-### 3) Set environment variables
-Create `.env` in repo root:
+### 2. Configure
+
+Create `.env` (already gitignored):
 
 ```bash
-# Provider selection
-LLM_PROVIDER="anthropic"   # anthropic | gemini | mock
+LLM_PROVIDER="anthropic"
 LLM_MODEL="claude-sonnet-4-6"
+ANTHROPIC_API_KEY="your-key"
 
-# Keys (depending on provider)
-ANTHROPIC_API_KEY="YOUR_KEY"
-# GEMINI_API_KEY="YOUR_KEY"
+MAX_TOOL_ROUNDS="12"
+MAX_TOKENS="4096"
 
-# Runtime knobs
-MAX_TOOL_ROUNDS="6"
-MAX_TOKENS="900"
-INCLUDE_STRUCTURED_PLAN="true"
+CORS_ALLOW_ORIGINS='["*"]'
 ```
 
-### 4) Start the API
+For tests / offline demo, set `LLM_PROVIDER="mock"` (no key needed).
+
+### 3. Start
 
 ```bash
-# Preferred:
-uvicorn src.api.app:app --reload --port 8000
-#
-# Convenience alias (kept for simplicity):
-# uvicorn main:app --reload --port 8000
+./src/scripts/backend.sh    # FastAPI on :8000
+./src/scripts/frontend.sh   # Streamlit on :8501
+# or, both at once:
+./src/scripts/dev.sh
 ```
 
-Open docs at `http://127.0.0.1:8000/docs`.
+Open <http://localhost:8501>.
 
-## Run backend + frontend (two terminals)
-### Terminal 1: Backend (FastAPI)
+### 4. Run tests
 
 ```bash
-./backend.sh
+pytest
 ```
 
-### Terminal 2: Frontend (Streamlit)
-
-```bash
-./frontend.sh
-```
-
-Open `http://localhost:8501` and chat with the agent.
-
-## One-command dev start
-Runs backend + frontend together:
-
-```bash
-./dev.sh
-```
+20 tests run in <1s including a scripted multi-step tool-use test that exercises the orchestration loop without needing an API key.
 
 ## API
-### POST `/chat` (alias for v1)
-Request:
 
-```json
-{ "conversation_id": "optional", "message": "..." }
-```
-
-Response:
-
-```json
-{ "conversation_id": "...", "reply": "..." }
-```
-
-### POST `/api/v0/chat`
-- Minimal request/response (`message` → `reply`).
-
-### POST `/api/v1/chat`
-- Supports optional `preferences` overrides and can return a structured `plan`:
+### `POST /chat` (alias for `/api/v1/chat`)
 
 ```json
 {
   "conversation_id": "optional",
-  "message": "...",
+  "message": "Plan Amsterdam to Copenhagen, 100km/day, camping, June",
   "preferences": {
     "nationality": "Canadian",
     "month": "June",
@@ -129,16 +125,71 @@ Response:
 }
 ```
 
-## Architecture decisions (1 page max)
-- **Separation of concerns**: `src/api` handles HTTP + state; `src/agent` handles orchestration; `src/tools` encapsulates capabilities.
-- **Tool registry**: tools are typed (Pydantic input/output) and invoked via a single dispatcher for consistent validation and errors.
-- **Conversation state**: in-memory store keyed by `conversation_id` (simple for demo; easy to swap to Redis/DB).
-- **Claude tool-use**: bounded loop that executes tool calls and feeds results back to Claude until a final response is produced.
+Response:
 
-## With more time
-- Real integrations (routing/elevation/lodging/POIs) + caching and rate-limit handling.
-- Better preference extraction + constraint handling (rest days, ferry avoidance, bike type, safety).
-- Persisted state and export formats (PDF/GPX), plus richer budget + visa logic by country.
+```json
+{
+  "conversation_id": "...",
+  "reply": "## Trip summary\n- Route: Amsterdam → ...",
+  "tool_calls": [
+    { "name": "get_route", "input": {...}, "output": {...}, "is_error": false },
+    ...
+  ],
+  "rounds": 4,
+  "truncated": false,
+  "error": null
+}
+```
+
+`tool_calls` is an audit trail of every tool invocation the agent made for that turn — useful for the UI's "agent steps" panel and for debugging.
+
+### `GET /health`
+Liveness probe; returns provider/model in use.
+
+### `POST /api/v0/chat` and `POST /api/v0/tools/<name>`
+Deterministic, no-LLM endpoints. The chat endpoint asks for missing preferences then assembles a plan from the same registry. Useful as a fallback, for load testing, and for tool-only consumers.
+
+## Architecture decisions
+
+### Separation of concerns
+Three layers, each with a single responsibility:
+- `src/api/` — HTTP, validation, middleware. Knows nothing about Claude.
+- `src/agent/` — system prompt, provider abstraction, tool-use loop, orchestrators. Knows nothing about HTTP.
+- `src/tools/` — typed mock data sources behind a registry. Knows nothing about either.
+
+The whole graph is wired by `src/agent/runtime.py` and exposed via FastAPI's dependency injection (`get_runtime()`). Swapping the LLM, the store, or any tool is a one-file change.
+
+### Tool registry, not a hand-rolled `if name == "..."` switch
+Every tool is a `ToolSpec(name, description, InputModel, OutputModel, handler)`. The registry produces both the JSON schemas Claude needs and the runtime dispatcher with Pydantic validation, with consistent error reporting (`ToolError`). Adding a tool: write the input/output models + handler, add one line to `builtins.py`, write a test.
+
+### Bounded tool-use loop
+[`orchestration_loop.run_agent_loop`](src/agent/orchestration_loop.py) calls Claude, executes any `tool_use` blocks (including parallel ones), feeds typed results back, and loops. Bounded by `MAX_TOOL_ROUNDS` to prevent runaway loops, with explicit handling for `max_tokens` truncation. Returns a structured `OrchestrationResult` (reply + tool_calls audit + rounds + truncation flag) — not just a string — so the API and UI can show the user *what* the agent did.
+
+### LLM-driven planning, no Python heuristics
+Earlier versions had regex-based preference extraction and post-hoc deterministic plan injection. Both were removed: they masked LLM bugs, undermined the multi-step reasoning the case is testing, and broke conversation state. The agent now genuinely plans by calling tools.
+
+### Conversation state via a `Protocol`
+[`ConversationStore`](src/state/base.py) is a Protocol with a single in-memory implementation today. Swapping to Redis / Postgres is one new class — no changes anywhere else. `ConversationState` carries the full Anthropic-shaped message history, so multi-turn refinements (e.g. "now make it 80 km/day") work without re-extracting context.
+
+### Provider abstraction for testability
+[`LLMProvider`](src/agent/providers/base.py) is a Protocol; `MockProvider` accepts a scripted response sequence so the orchestration loop is exercised in tests *without* an API key. `test_orchestration_loop.py` verifies multi-round tool dispatch, parallel tool calls, validation errors, and truncation — entirely offline.
+
+### Config-driven, no magic numbers
+Every tunable — model name, token budget, mock distance ranges, accommodation prices, POI categories, visa countries — lives in [`src/config/settings.py`](src/config/settings.py) (pydantic-settings, env-overridable). Tools call `get_settings()`; nothing is hardcoded mid-file.
+
+### Production hygiene
+- `RequestResponseLogMiddleware` logs structured request/response bodies with API-key redaction.
+- `RateLimitMiddleware` is a per-IP fixed-window limiter, env-toggleable.
+- Provider failures bubble up cleanly; the agent loop surfaces `max_tokens` and `max_rounds` as explicit signals on the response, not silent truncation.
+
+## What I'd build with more time
+
+- **Streaming responses** (SSE) so the UI shows tool calls and text incrementally — currently the user waits for the full turn.
+- **Real integrations** for at least one tool (e.g. Brouter for routing, Open-Meteo for weather) with caching + circuit breakers, keeping mocks behind a feature flag for offline dev.
+- **Persistent state** (Redis or Postgres) replacing the in-memory store, plus export formats (GPX, ICS).
+- **Stronger preference modeling** — bike type, fitness, ferry preferences, rest-day cadence, daylight constraints — extracted by Claude into a typed Pydantic schema rather than a single free-form `notes` field.
+- **Eval harness** — a small set of golden conversations scored against an LLM-as-judge to track regressions on the system prompt and tool definitions.
+- **Map view** in the UI rendering the route waypoints (`pydeck` or similar).
 
 ## Screen recording
-- Record a full conversation from first request to final itinerary and add link here.
+_Add link here before submission._

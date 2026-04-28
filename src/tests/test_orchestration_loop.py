@@ -1,0 +1,104 @@
+from __future__ import annotations
+
+from src.agent.orchestration import run_agent_loop
+from src.agent.providers.mock_provider import MockProvider, MockResponse, text_block, tool_use_block
+from src.tools.builtins import build_registry
+
+
+def test_orchestration_runs_multi_step_tool_use_and_returns_final_text():
+    registry = build_registry()
+    scripted = [
+        MockResponse(
+            content=[
+                text_block("Pulling the route."),
+                tool_use_block("u1", "get_route", {"origin": "Amsterdam", "destination": "Copenhagen"}),
+            ],
+            stop_reason="tool_use",
+        ),
+        MockResponse(
+            content=[
+                tool_use_block("u2", "get_weather", {"location": "Copenhagen", "month": "June"}),
+            ],
+            stop_reason="tool_use",
+        ),
+        MockResponse(
+            content=[
+                tool_use_block("u3", "find_accommodation", {"near": "Copenhagen", "kind": "camping"}),
+            ],
+            stop_reason="tool_use",
+        ),
+        MockResponse(
+            content=[text_block("Here is your itinerary: ...")],
+            stop_reason="end_turn",
+        ),
+    ]
+    provider = MockProvider(responses=scripted)
+
+    result = run_agent_loop(
+        messages=[{"role": "user", "content": "Plan Amsterdam to Copenhagen"}],
+        registry=registry,
+        provider=provider,
+        max_rounds=10,
+        max_tokens=512,
+    )
+
+    assert result.error is None
+    assert result.truncated is False
+    assert result.rounds == 4
+    assert result.reply == "Here is your itinerary: ..."
+
+    names = [t.name for t in result.tool_calls]
+    assert names == ["get_route", "get_weather", "find_accommodation"]
+
+    route_call = result.tool_calls[0]
+    assert route_call.is_error is False
+    assert route_call.output is not None
+    assert route_call.output["origin"] == "Amsterdam"
+    assert route_call.output["destination"] == "Copenhagen"
+    assert route_call.output["total_distance_km"] > 0
+
+
+def test_orchestration_truncates_when_loop_exceeds_max_rounds():
+    registry = build_registry()
+    looping = MockResponse(
+        content=[tool_use_block("u", "get_route", {"origin": "A", "destination": "B"})],
+        stop_reason="tool_use",
+    )
+    provider = MockProvider(responses=[looping] * 10)
+
+    result = run_agent_loop(
+        messages=[{"role": "user", "content": "loop forever"}],
+        registry=registry,
+        provider=provider,
+        max_rounds=3,
+        max_tokens=128,
+    )
+
+    assert result.truncated is True
+    assert result.rounds == 3
+    assert "round limit" in result.reply.lower()
+    assert len(result.tool_calls) == 3
+
+
+def test_orchestration_records_tool_validation_errors():
+    registry = build_registry()
+    scripted = [
+        MockResponse(
+            content=[tool_use_block("u1", "get_route", {"origin": "X"})],
+            stop_reason="tool_use",
+        ),
+        MockResponse(content=[text_block("Sorry, missing destination.")], stop_reason="end_turn"),
+    ]
+    provider = MockProvider(responses=scripted)
+
+    result = run_agent_loop(
+        messages=[{"role": "user", "content": "broken"}],
+        registry=registry,
+        provider=provider,
+        max_rounds=4,
+        max_tokens=128,
+    )
+
+    assert result.tool_calls[0].is_error is True
+    assert result.tool_calls[0].output is None
+    assert result.reply == "Sorry, missing destination."

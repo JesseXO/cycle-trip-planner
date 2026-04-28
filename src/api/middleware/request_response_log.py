@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import time
 from typing import Any
 
@@ -8,33 +7,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from src.api.middleware.redaction import redact, try_parse_json
 from src.logger.logging import get_logger
 
+
 logger = get_logger("cycling_trip_planner.api")
-
-
-def _try_parse_json(raw: bytes) -> Any:
-    if not raw:
-        return None
-    try:
-        return json.loads(raw.decode("utf-8"))
-    except Exception:
-        return None
-
-
-def _redact(obj: Any) -> Any:
-    if isinstance(obj, dict):
-        out: dict[str, Any] = {}
-        for k, v in obj.items():
-            lk = str(k).lower()
-            if lk in {"authorization", "x-api-key", "api_key", "apikey", "anthropic_api_key", "gemini_api_key"}:
-                out[k] = "***REDACTED***"
-            else:
-                out[k] = _redact(v)
-        return out
-    if isinstance(obj, list):
-        return [_redact(x) for x in obj]
-    return obj
+LOGGED_PATH_PREFIXES = ("/api/",)
+LOGGED_PATHS = {"/chat"}
 
 
 class RequestResponseLogMiddleware(BaseHTTPMiddleware):
@@ -44,57 +23,71 @@ class RequestResponseLogMiddleware(BaseHTTPMiddleware):
         self._max_body_bytes = int(max_body_bytes)
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        if not self._enabled:
-            return await call_next(request)
-
-        # Only log API routes where request bodies are useful.
-        if not (request.url.path.startswith("/api/") or request.url.path == "/chat"):
+        if not self._enabled or not _should_log(request.url.path):
             return await call_next(request)
 
         start = time.time()
 
-        req_body = await request.body()
-        if len(req_body) > self._max_body_bytes:
-            req_body = req_body[: self._max_body_bytes]
-
-        # Re-inject body so downstream can read it
-        async def receive() -> dict[str, Any]:
-            return {"type": "http.request", "body": req_body, "more_body": False}
-
-        request = Request(request.scope, receive)
+        req_body = await _read_body(request, self._max_body_bytes)
+        request = _rebuild_request(request, req_body)
 
         resp = await call_next(request)
-
-        # Capture response body (non-streaming)
-        resp_body = b""
-        async for chunk in resp.body_iterator:
-            resp_body += chunk
-            if len(resp_body) > self._max_body_bytes:
-                resp_body = resp_body[: self._max_body_bytes]
-                break
-
-        # Rebuild response with captured body
-        new_resp = Response(
-            content=resp_body,
-            status_code=resp.status_code,
-            headers=dict(resp.headers),
-            media_type=resp.media_type,
-        )
+        resp_body, new_resp = await _capture_response(resp, self._max_body_bytes)
 
         duration_ms = int((time.time() - start) * 1000)
-
-        req_json = _try_parse_json(req_body)
-        resp_json = _try_parse_json(resp_body)
-
-        logger.info(
-            "http %s %s -> %s (%sms) req=%s resp=%s",
-            request.method,
-            request.url.path,
-            resp.status_code,
-            duration_ms,
-            _redact(req_json) if req_json is not None else None,
-            _redact(resp_json) if resp_json is not None else None,
-        )
+        _log_exchange(request, resp.status_code, duration_ms, req_body, resp_body)
 
         return new_resp
 
+
+def _should_log(path: str) -> bool:
+    return path in LOGGED_PATHS or any(path.startswith(p) for p in LOGGED_PATH_PREFIXES)
+
+
+async def _read_body(request: Request, max_bytes: int) -> bytes:
+    body = await request.body()
+    return body[:max_bytes] if len(body) > max_bytes else body
+
+
+def _rebuild_request(request: Request, body: bytes) -> Request:
+    async def receive() -> dict[str, Any]:
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    return Request(request.scope, receive)
+
+
+async def _capture_response(resp: Response, max_bytes: int) -> tuple[bytes, Response]:
+    body = b""
+    async for chunk in resp.body_iterator:
+        body += chunk
+        if len(body) > max_bytes:
+            body = body[:max_bytes]
+            break
+
+    new_resp = Response(
+        content=body,
+        status_code=resp.status_code,
+        headers=dict(resp.headers),
+        media_type=resp.media_type,
+    )
+    return body, new_resp
+
+
+def _log_exchange(
+    request: Request,
+    status_code: int,
+    duration_ms: int,
+    req_body: bytes,
+    resp_body: bytes,
+) -> None:
+    req_json = try_parse_json(req_body)
+    resp_json = try_parse_json(resp_body)
+    logger.info(
+        "http %s %s -> %s (%sms) req=%s resp=%s",
+        request.method,
+        request.url.path,
+        status_code,
+        duration_ms,
+        redact(req_json) if req_json is not None else None,
+        redact(resp_json) if resp_json is not None else None,
+    )
