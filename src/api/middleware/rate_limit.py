@@ -28,6 +28,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._requests = int(requests)
         self._window_seconds = int(window_seconds)
         self._by_key: dict[str, _Window] = {}
+        self._last_sweep = 0.0
 
     def _key(self, request: Request) -> str:
         fwd = request.headers.get("x-forwarded-for")
@@ -37,12 +38,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             ip = request.client.host if request.client else "unknown"
         return ip
 
+    def _evict_expired(self, now: float) -> None:
+        if now - self._last_sweep < self._window_seconds:
+            return
+        cutoff = now - self._window_seconds
+        self._by_key = {k: w for k, w in self._by_key.items() if w.start >= cutoff}
+        self._last_sweep = now
+
     async def dispatch(self, request: Request, call_next) -> Response:
         if not self._enabled:
             return await call_next(request)
 
         key = self._key(request)
         now = time.time()
+        self._evict_expired(now)
+
         w = self._by_key.get(key)
         if w is None or (now - w.start) >= self._window_seconds:
             w = _Window(start=now, count=0)

@@ -10,6 +10,7 @@ from src.api.v0 import router as v0_router
 from src.api.v1 import router as v1_router
 from src.api.deps import get_runtime
 from src.config.version import get_version
+from src.exception import register_exception_handlers
 
 
 def create_app() -> FastAPI:
@@ -34,6 +35,8 @@ def create_app() -> FastAPI:
         allow_methods=rt.settings.cors_allow_methods,
         allow_headers=rt.settings.cors_allow_headers,
     )
+
+    register_exception_handlers(app)
 
     app.include_router(health_router)
     app.include_router(v0_router)

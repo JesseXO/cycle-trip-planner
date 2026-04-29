@@ -28,7 +28,7 @@ class AgentOrchestrator:
 
         if preferences_override:
             updated.preferences = updated.preferences.model_copy(
-                update=preferences_override.model_dump(exclude_none=True)
+                update=preferences_override.model_dump(exclude_unset=True, exclude_none=True)
             )
 
         framed_message = _frame_user_message(user_message, updated.preferences)
@@ -38,14 +38,14 @@ class AgentOrchestrator:
         result = run_agent_loop(
             system=system_prompt_blocks(cache=cache),
             tools=self.registry.schemas_for_llm(cache_breakpoint=cache),
-            messages=_history_for_provider(updated.messages),
+            messages=_clone_history(updated.messages),
             registry=self.registry,
             provider=self.provider,
             max_rounds=self.settings.max_tool_rounds,
             max_tokens=self.settings.max_tokens,
         )
 
-        updated.messages = _history_to_state(result.history)
+        updated.messages = _clone_history(result.history)
         return result, updated
 
 
@@ -61,9 +61,5 @@ def _frame_user_message(user_message: str, prefs: TripPreferences) -> str:
     )
 
 
-def _history_for_provider(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _clone_history(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{"role": m["role"], "content": m["content"]} for m in messages]
-
-
-def _history_to_state(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [{"role": m["role"], "content": m["content"]} for m in history]

@@ -6,7 +6,7 @@ A conversational AI agent that helps cyclists plan multi-day bike trips. It asks
 
 ## Stack
 
-- **Python 3.10+**, FastAPI, Pydantic v2
+- **Python 3.11+**, FastAPI, Pydantic v2
 - **Anthropic Claude** with tool-use (default: `claude-sonnet-4-6`)
 - **Streamlit** chat UI
 - **Mock tools** (the case study explicitly tests architecture, not external integration)
@@ -16,15 +16,20 @@ A conversational AI agent that helps cyclists plan multi-day bike trips. It asks
 ```
 src/
 ├── agent/
-│   ├── orchestration_loop.py     # bounded tool-use loop, returns structured result
-│   ├── v1_orchestrator.py        # LLM-driven turn handler (default)
-│   ├── v0_orchestrator.py        # deterministic fallback (no LLM, used by /api/v0)
 │   ├── runtime.py                # composes settings + provider + registry + store
+│   ├── orchestration/
+│   │   ├── loop.py               # bounded tool-use loop, returns structured result
+│   │   ├── blocks.py             # content-block helpers (text / tool_use)
+│   │   └── types.py              # OrchestrationResult, ToolInvocation
+│   ├── v1/orchestrator.py        # LLM-driven turn handler (default)
+│   ├── v0/orchestrator.py        # deterministic fallback (no LLM, used by /api/v0)
+│   ├── providers/                # LLMProvider Protocol + Anthropic + Mock impls
 │   ├── prompts/system.md         # system prompt (file, not string literal)
-│   └── providers/                # LLMProvider Protocol + Anthropic + Mock impls
+│   └── planning/                 # deterministic plan builder used by v0
 ├── tools/
 │   ├── registry.py               # ToolSpec + ToolRegistry + dispatcher
 │   ├── builtins.py               # registry composition
+│   ├── names.py                  # ToolName StrEnum
 │   ├── get_route.py
 │   ├── get_elevation_profile.py
 │   ├── get_weather.py
@@ -33,18 +38,22 @@ src/
 │   ├── check_visa_requirements.py
 │   └── estimate_budget.py
 ├── api/
-│   ├── app.py                    # FastAPI app factory + middleware wiring
+│   ├── app.py                    # FastAPI app factory + middleware + exception handlers
 │   ├── models.py                 # ConversationState, TripPreferences, DayPlan
-│   ├── middleware/               # rate limit + request/response logging
+│   ├── schemas.py                # ChatRequest, ChatResponse, ToolCallView
+│   ├── deps.py                   # get_runtime() dependency
+│   ├── health.py                 # /health
+│   ├── middleware/               # rate limit + request/response logging + redaction
 │   ├── v0/                       # deterministic chat + per-tool POSTs
-│   └── v1/                       # LLM-driven chat + optional-tool POSTs
+│   └── v1/                       # LLM-driven chat + per-tool POSTs
 ├── state/                        # ConversationStore Protocol + in-memory impl
-├── config/settings.py            # pydantic-settings, env-overridable
-├── logger/                       # structured logger
-├── exception/                    # request-level error handling
-├── scripts/                      # backend.sh, frontend.sh, dev.sh
-└── tests/                        # 20 tests including multi-step orchestration
-streamlit_app.py                  # chat UI
+├── config/settings/              # pydantic-settings, one file per concern, env-overridable
+├── logger/logging.py             # logger factory (uvicorn.error child)
+├── exception/                    # AgentError + LLMProviderError + handlers
+├── ui/                           # Streamlit UI components
+└── tests/                        # 27 tests including scripted multi-step orchestration
+streamlit_app.py                  # Streamlit entrypoint
+main.py                           # uvicorn entrypoint
 ```
 
 ## Tools implemented
@@ -105,7 +114,7 @@ Open <http://localhost:8501>.
 pytest
 ```
 
-20 tests run in <1s including a scripted multi-step tool-use test that exercises the orchestration loop without needing an API key.
+27 tests run in <1s including a scripted multi-step tool-use test that exercises the orchestration loop (sequential and parallel tool calls, validation errors, max-tokens / max-rounds truncation, preference-change adaptation) and the redaction middleware — entirely offline, no API key required.
 
 ## API
 
@@ -165,7 +174,7 @@ The whole graph is wired by `src/agent/runtime.py` and exposed via FastAPI's dep
 Every tool is a `ToolSpec(name, description, InputModel, OutputModel, handler)`. The registry produces both the JSON schemas Claude needs and the runtime dispatcher with Pydantic validation, with consistent error reporting (`ToolError`). Adding a tool: write the input/output models + handler, add one line to `builtins.py`, write a test.
 
 ### Bounded tool-use loop
-[`orchestration_loop.run_agent_loop`](src/agent/orchestration_loop.py) calls Claude, executes any `tool_use` blocks (including parallel ones), feeds typed results back, and loops. Bounded by `MAX_TOOL_ROUNDS` to prevent runaway loops, with explicit handling for `max_tokens` truncation. Returns a structured `OrchestrationResult` (reply + tool_calls audit + rounds + truncation flag) — not just a string — so the API and UI can show the user *what* the agent did.
+[`run_agent_loop`](src/agent/orchestration/loop.py) calls Claude, executes any `tool_use` blocks (including parallel ones), feeds typed results back, and loops. Bounded by `MAX_TOOL_ROUNDS` to prevent runaway loops, with explicit handling for `max_tokens` truncation. Returns a structured `OrchestrationResult` (reply + tool_calls audit + rounds + truncation flag) — not just a string — so the API and UI can show the user *what* the agent did.
 
 ### LLM-driven planning, no Python heuristics
 Earlier versions had regex-based preference extraction and post-hoc deterministic plan injection. Both were removed: they masked LLM bugs, undermined the multi-step reasoning the case is testing, and broke conversation state. The agent now genuinely plans by calling tools.
@@ -177,12 +186,13 @@ Earlier versions had regex-based preference extraction and post-hoc deterministi
 [`LLMProvider`](src/agent/providers/base.py) is a Protocol; `MockProvider` accepts a scripted response sequence so the orchestration loop is exercised in tests *without* an API key. `test_orchestration_loop.py` verifies multi-round tool dispatch, parallel tool calls, validation errors, and truncation — entirely offline.
 
 ### Config-driven, no magic numbers
-Every tunable — model name, token budget, mock distance ranges, accommodation prices, POI categories, visa countries — lives in [`src/config/settings.py`](src/config/settings.py) (pydantic-settings, env-overridable). Tools call `get_settings()`; nothing is hardcoded mid-file.
+Every tunable — model name, token budget, mock distance ranges, accommodation prices, POI categories, visa countries — lives in [`src/config/settings/`](src/config/settings/) (pydantic-settings, one file per concern, env-overridable). Tools call `get_settings()`; nothing is hardcoded mid-file.
 
 ### Production hygiene
-- `RequestResponseLogMiddleware` logs structured request/response bodies with API-key redaction.
-- `RateLimitMiddleware` is a per-IP fixed-window limiter, env-toggleable.
-- Provider failures bubble up cleanly; the agent loop surfaces `max_tokens` and `max_rounds` as explicit signals on the response, not silent truncation.
+- `RequestResponseLogMiddleware` logs request/response bodies (truncated, JSON-parsed when possible) with sensitive-key redaction (`authorization`, `x-api-key`, `*_api_key`, `token`, `bearer`, `secret`, `password`).
+- `RateLimitMiddleware` is a per-IP fixed-window limiter, env-toggleable, with lazy eviction of expired windows so memory does not grow unbounded.
+- Global FastAPI exception handlers map `LLMProviderError`, `ToolError`, and uncaught exceptions to clean JSON `{ "error": ..., "type": ... }` responses — no stack traces leak to clients.
+- Provider failures inside the agent loop are caught and surfaced via `OrchestrationResult.error`; `max_tokens` and `max_rounds` are explicit signals on the response, not silent truncation.
 
 ## What I'd build with more time
 

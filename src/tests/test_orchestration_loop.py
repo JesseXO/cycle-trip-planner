@@ -123,3 +123,53 @@ def test_registry_emits_cache_breakpoint_only_when_requested():
     cached = registry.schemas_for_llm(cache_breakpoint=True)
     assert all("cache_control" not in s for s in cached[:-1])
     assert cached[-1]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_orchestration_dispatches_parallel_tool_uses_in_one_round():
+    registry = build_registry()
+    scripted = [
+        MockResponse(
+            content=[
+                tool_use_block("u1", "get_weather", {"location": "Bremen", "month": "June"}),
+                tool_use_block("u2", "get_elevation_profile", {"origin": "Amsterdam", "destination": "Bremen", "distance_km": 220}),
+                tool_use_block("u3", "find_accommodation", {"near": "Bremen", "kind": "camping"}),
+            ],
+            stop_reason=StopReason.TOOL_USE,
+        ),
+        MockResponse(content=[text_block("Done.")], stop_reason=StopReason.END_TURN),
+    ]
+    provider = MockProvider(responses=scripted)
+
+    result = _run(provider, registry, [{"role": "user", "content": "Plan day 1"}])
+
+    assert result.error is None
+    assert result.rounds == 2
+    names = [t.name for t in result.tool_calls]
+    assert names == ["get_weather", "get_elevation_profile", "find_accommodation"]
+    assert all(t.is_error is False for t in result.tool_calls)
+
+    tool_results_msg = result.history[2]
+    assert tool_results_msg["role"] == "user"
+    assert isinstance(tool_results_msg["content"], list)
+    assert len(tool_results_msg["content"]) == 3
+    ids = [block["tool_use_id"] for block in tool_results_msg["content"]]
+    assert ids == ["u1", "u2", "u3"]
+
+
+def test_orchestration_returns_truncated_on_max_tokens():
+    registry = build_registry()
+    scripted = [
+        MockResponse(
+            content=[text_block("partial reply...")],
+            stop_reason=StopReason.MAX_TOKENS,
+        ),
+    ]
+    provider = MockProvider(responses=scripted)
+
+    result = _run(provider, registry, [{"role": "user", "content": "anything"}])
+
+    assert result.truncated is True
+    assert result.error == StopReason.MAX_TOKENS.value
+    assert result.reply == "partial reply..."
+    assert result.rounds == 1
+    assert result.tool_calls == []

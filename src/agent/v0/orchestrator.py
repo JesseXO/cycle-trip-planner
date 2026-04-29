@@ -20,7 +20,9 @@ class MockOrchestratorV0:
     ) -> tuple[str, ConversationState]:
         updated = state.model_copy(deep=True)
         if preferences_override:
-            updated.preferences = updated.preferences.model_copy(update=preferences_override.model_dump(exclude_none=True))
+            updated.preferences = updated.preferences.model_copy(
+                update=preferences_override.model_dump(exclude_unset=True, exclude_none=True)
+            )
 
         updated.messages.append({"role": "user", "content": user_message})
 
