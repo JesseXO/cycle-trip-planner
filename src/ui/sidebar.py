@@ -29,11 +29,11 @@ class SidebarValues:
     hostel_every: int
 
 
+CHAT_MODES = ("Chat only", "Chat with filters")
+
+
 def render() -> SidebarValues:
     prefs = st.session_state.prefs
-
-    if st.session_state.view_mode != "sidebar":
-        return _values_from_prefs(prefs)
 
     with st.sidebar:
         st.markdown("### 🚴 Trip Planner")
@@ -46,46 +46,51 @@ def render() -> SidebarValues:
             st.caption("Start with `./src/scripts/backend.sh`")
 
         st.divider()
-        st.markdown("**Preferences**")
-        month = st.selectbox(
-            "Travel month",
-            MONTH_OPTIONS,
-            index=MONTH_OPTIONS.index(prefs["month"]) if prefs["month"] in MONTH_OPTIONS else 4,
+        st.radio(
+            "Mode",
+            CHAT_MODES,
+            key="chat_mode",
+            help="Chat only sends just your message. Chat with filters also sends the saved preferences below.",
         )
-        daily_km = st.slider(
-            "Daily km target",
-            min_value=DAILY_KM_MIN,
-            max_value=DAILY_KM_MAX,
-            value=int(prefs["daily_km"]),
-            step=DAILY_KM_STEP,
-        )
-        lodging = st.selectbox(
-            "Lodging style",
-            LODGING_OPTIONS,
-            index=LODGING_OPTIONS.index(prefs["lodging"]) if prefs["lodging"] in LODGING_OPTIONS else 0,
-        )
-        hostel_every = st.number_input(
-            "Hostel cadence (every N nights, 0 = off)",
-            min_value=HOSTEL_CADENCE_MIN,
-            max_value=HOSTEL_CADENCE_MAX,
-            value=int(prefs["hostel_every"]),
-            step=1,
-        )
-        nationality = st.text_input("Nationality (for visa note, optional)", value=prefs["nationality"])
+
+        if st.session_state.chat_mode == "Chat with filters":
+            st.divider()
+            st.markdown("**Filters**")
+            prefs["month"] = st.selectbox(
+                "Travel month",
+                MONTH_OPTIONS,
+                index=MONTH_OPTIONS.index(prefs["month"]) if prefs["month"] in MONTH_OPTIONS else 4,
+            )
+            prefs["daily_km"] = int(
+                st.slider(
+                    "Daily km target",
+                    min_value=DAILY_KM_MIN,
+                    max_value=DAILY_KM_MAX,
+                    value=int(prefs["daily_km"]),
+                    step=DAILY_KM_STEP,
+                )
+            )
+            prefs["lodging"] = st.selectbox(
+                "Lodging style",
+                LODGING_OPTIONS,
+                index=LODGING_OPTIONS.index(prefs["lodging"]) if prefs["lodging"] in LODGING_OPTIONS else 0,
+            )
+            prefs["hostel_every"] = int(
+                st.number_input(
+                    "Hostel cadence (every N nights, 0 = off)",
+                    min_value=HOSTEL_CADENCE_MIN,
+                    max_value=HOSTEL_CADENCE_MAX,
+                    value=int(prefs["hostel_every"]),
+                    step=1,
+                )
+            )
+            prefs["nationality"] = st.text_input(
+                "Nationality (for visa note, optional)", value=prefs["nationality"]
+            )
 
         st.divider()
         st.button("🗑️ New conversation", on_click=state.reset, use_container_width=True)
 
-    prefs["month"] = month
-    prefs["daily_km"] = int(daily_km)
-    prefs["lodging"] = lodging
-    prefs["hostel_every"] = int(hostel_every)
-    prefs["nationality"] = nationality
-
-    return _values_from_prefs(prefs)
-
-
-def _values_from_prefs(prefs: dict) -> SidebarValues:
     return SidebarValues(
         nationality=prefs["nationality"],
         month=prefs["month"],

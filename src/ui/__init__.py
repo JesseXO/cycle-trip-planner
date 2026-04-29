@@ -18,13 +18,6 @@ _HIDE_TOOLBAR_CHROME = """
 </style>
 """
 
-_HIDE_SIDEBAR = """
-<style>
-[data-testid="stSidebar"] { display: none !important; }
-[data-testid="stSidebarCollapsedControl"] { display: none !important; }
-</style>
-"""
-
 
 def configure_page() -> None:
     st.set_page_config(
@@ -39,9 +32,6 @@ def configure_page() -> None:
 def run() -> None:
     configure_page()
     state.init()
-
-    if st.session_state.view_mode != "sidebar":
-        st.markdown(_HIDE_SIDEBAR, unsafe_allow_html=True)
 
     sidebar = render_sidebar()
     chat.render_header()
@@ -58,13 +48,16 @@ def _handle_turn(prompt: str, sidebar: SidebarValues) -> None:
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    preferences = build_preferences(
-        nationality=sidebar.nationality,
-        month=sidebar.month,
-        daily_km=sidebar.daily_km,
-        lodging=sidebar.lodging,
-        hostel_every=sidebar.hostel_every,
-    )
+    if st.session_state.chat_mode == "Chat with filters":
+        preferences = build_preferences(
+            nationality=sidebar.nationality,
+            month=sidebar.month,
+            daily_km=sidebar.daily_km,
+            lodging=sidebar.lodging,
+            hostel_every=sidebar.hostel_every,
+        )
+    else:
+        preferences = None
 
     with st.chat_message("assistant"):
         with st.spinner("Planning..."):

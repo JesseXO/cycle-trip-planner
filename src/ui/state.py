@@ -21,8 +21,8 @@ def init() -> None:
         st.session_state.tool_calls_per_turn = []
     if "session_key" not in st.session_state:
         st.session_state.session_key = uuid.uuid4().hex
-    if "view_mode" not in st.session_state:
-        st.session_state.view_mode = "sidebar"
+    if "chat_mode" not in st.session_state:
+        st.session_state.chat_mode = "Chat with filters"
     if "prefs" not in st.session_state:
         st.session_state.prefs = {
             "month": MONTH_OPTIONS[4],
@@ -31,10 +31,6 @@ def init() -> None:
             "hostel_every": HOSTEL_CADENCE_DEFAULT,
             "nationality": "",
         }
-
-
-def toggle_view_mode() -> None:
-    st.session_state.view_mode = "chat" if st.session_state.view_mode == "sidebar" else "sidebar"
 
 
 def reset() -> None:
