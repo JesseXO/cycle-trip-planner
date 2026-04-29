@@ -75,14 +75,26 @@ Every tool has Pydantic input/output models and is dispatched through a single t
 ### 1. Install
 
 ```bash
+./install.sh
+```
+
+One-shot bootstrap: verifies Python ≥ 3.11, creates `.venv` (rebuilds it if an older Python was used), installs the project + dev extras, copies `.env.example` → `.env` if missing, and wires `core.hooksPath` so the pre-commit hook (step 5) is active. Idempotent — safe to re-run any time `requirements.txt`/`pyproject.toml` change.
+
+<details>
+<summary>Manual install (if you'd rather not run the script)</summary>
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -e ".[dev]"
+cp .env.example .env
 ```
+
+</details>
 
 ### 2. Configure
 
-Create `.env` (already gitignored):
+Edit the `.env` that `install.sh` created (already gitignored):
 
 ```bash
 LLM_PROVIDER="anthropic"
@@ -100,10 +112,10 @@ For tests / offline demo, set `LLM_PROVIDER="mock"` (no key needed).
 ### 3. Start
 
 ```bash
+./dev.sh        # FastAPI on :8000 + Streamlit on :8501
+# or, run them separately:
 ./backend.sh    # FastAPI on :8000
 ./frontend.sh   # Streamlit on :8501
-# or, both at once:
-./dev.sh
 ```
 
 Open <http://localhost:8501>.
@@ -130,13 +142,13 @@ RUN_LIVE_LLM=1 ANTHROPIC_API_KEY=sk-... pytest src/tests/test_live_llm_smoke.py 
 
 Assertions are **structural** (headings, tool names, truncation flags), not text-equality, so the tests are resilient to model non-determinism while still catching real regressions in the system prompt or tool definitions. They're meant for nightly / on-demand runs — not the pre-commit hook.
 
-### 5. Enable the pre-commit hook (one-time, per clone)
+### 5. Pre-commit hook
+
+Already enabled by `install.sh` (`core.hooksPath=.githooks`). Every `git commit` runs the full pytest suite and aborts the commit if anything fails. To enable manually after a non-script install:
 
 ```bash
 git config core.hooksPath .githooks
 ```
-
-After this, every `git commit` runs the full pytest suite and aborts the commit if anything fails.
 
 ## API
 
