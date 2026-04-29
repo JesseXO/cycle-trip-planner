@@ -48,20 +48,22 @@ def _handle_turn(prompt: str, sidebar: SidebarValues) -> None:
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    if st.session_state.chat_mode == "Chat with filters":
-        preferences = build_preferences(
+    apply_preferences = st.session_state.chat_mode == "Chat with filters"
+    preferences = (
+        build_preferences(
             nationality=sidebar.nationality,
             month=sidebar.month,
             daily_km=sidebar.daily_km,
             lodging=sidebar.lodging,
             hostel_every=sidebar.hostel_every,
         )
-    else:
-        preferences = None
+        if apply_preferences
+        else None
+    )
 
     with st.chat_message("assistant"):
         with st.spinner("Planning..."):
-            data = _call_backend(prompt, preferences)
+            data = _call_backend(prompt, preferences, apply_preferences)
             if data is None:
                 st.stop()
 
@@ -79,9 +81,15 @@ def _handle_turn(prompt: str, sidebar: SidebarValues) -> None:
         render_tool_calls(tool_calls_data, rounds)
 
 
-def _call_backend(prompt: str, preferences: dict) -> dict | None:
+def _call_backend(prompt: str, preferences: dict | None, apply_preferences: bool) -> dict | None:
     try:
-        return send_message(BACKEND_URL, st.session_state.conversation_id, prompt, preferences)
+        return send_message(
+            BACKEND_URL,
+            st.session_state.conversation_id,
+            prompt,
+            preferences,
+            apply_preferences=apply_preferences,
+        )
     except requests.HTTPError as e:
         if e.response.status_code == 429:
             retry_after = e.response.headers.get("Retry-After")

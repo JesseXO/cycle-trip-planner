@@ -33,12 +33,14 @@ def send_message(
     backend_url: str,
     conversation_id: str | None,
     message: str,
-    preferences: dict,
+    preferences: dict | None,
+    apply_preferences: bool = True,
 ) -> dict:
     payload = {
         "conversation_id": conversation_id,
         "message": message,
         "preferences": preferences,
+        "apply_preferences": apply_preferences,
     }
     r = requests.post(f"{backend_url}{CHAT_PATH}", json=payload, timeout=REQUEST_TIMEOUT_S)
     r.raise_for_status()

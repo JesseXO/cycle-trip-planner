@@ -11,6 +11,7 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
     message: str = Field(min_length=1)
     preferences: TripPreferences | None = None
+    apply_preferences: bool = True
 
 
 class ToolCallView(BaseModel):

@@ -17,6 +17,7 @@ def chat(req: ChatRequest, response: Response, rt: Runtime = Depends(get_runtime
         state=state,
         user_message=req.message,
         preferences_override=req.preferences,
+        apply_preferences=req.apply_preferences,
     )
     rt.store.save(updated)
 

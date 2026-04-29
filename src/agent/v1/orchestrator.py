@@ -24,15 +24,20 @@ class AgentOrchestrator:
         state: ConversationState,
         user_message: str,
         preferences_override: TripPreferences | None = None,
+        apply_preferences: bool = True,
     ) -> tuple[OrchestrationResult, ConversationState]:
         updated = state.model_copy(deep=True)
 
-        if preferences_override:
+        if apply_preferences and preferences_override:
             updated.preferences = updated.preferences.model_copy(
                 update=preferences_override.model_dump(exclude_unset=True, exclude_none=True)
             )
 
-        framed_message = _frame_user_message(user_message, updated.preferences)
+        framed_message = (
+            _frame_user_message(user_message, updated.preferences)
+            if apply_preferences
+            else user_message
+        )
         updated.messages.append({"role": "user", "content": framed_message})
 
         cache = self.settings.prompt_cache_enabled
