@@ -72,13 +72,15 @@ Every tool has Pydantic input/output models and is dispatched through a single t
 
 ## Run locally
 
+All shell entrypoints live in [`scripts/`](scripts/) — install, dev, backend, frontend, tests.
+
 ### 1. Install
 
 ```bash
-./install.sh
+./scripts/install.sh
 ```
 
-One-shot bootstrap: verifies Python ≥ 3.11, creates `.venv` (rebuilds it if an older Python was used), installs the project + dev extras, copies `.env.example` → `.env` if missing, and wires `core.hooksPath` so the pre-commit hook (step 5) is active. Idempotent — safe to re-run any time `requirements.txt`/`pyproject.toml` change.
+One-shot bootstrap: verifies Python ≥ 3.11, creates `.venv` (rebuilds it if an older Python was used), installs the project + dev extras, copies `.env.example` → `.env` if missing, and wires `core.hooksPath` so the pre-commit hook (step 5) is active. Idempotent — safe to re-run any time `requirements.txt`/`pyproject.toml` change. Runnable from any cwd.
 
 <details>
 <summary>Manual install (if you'd rather not run the script)</summary>
@@ -112,10 +114,10 @@ For tests / offline demo, set `LLM_PROVIDER="mock"` (no key needed).
 ### 3. Start
 
 ```bash
-./dev.sh        # FastAPI on :8000 + Streamlit on :8501
+./scripts/dev.sh        # FastAPI on :8000 + Streamlit on :8501
 # or, run them separately:
-./backend.sh    # FastAPI on :8000
-./frontend.sh   # Streamlit on :8501
+./scripts/backend.sh    # FastAPI on :8000
+./scripts/frontend.sh   # Streamlit on :8501
 ```
 
 Open <http://localhost:8501>.
@@ -123,7 +125,9 @@ Open <http://localhost:8501>.
 ### 4. Run tests
 
 ```bash
-pytest
+./scripts/tests.sh                              # full offline suite
+./scripts/tests.sh src/tests/test_gpx_export.py # any pytest args pass through
+./scripts/tests.sh --live                       # opt-in live LLM smoke tests
 ```
 
 68 offline tests run in <1s and cover: scripted multi-step tool-use (sequential + parallel + validation errors + max-tokens / max-rounds truncation), preference-change adaptation, end-to-end v1 chat over HTTP with a scripted provider (including the 502-on-upstream-failure path), GPX export (extractor + serializer + 404 paths), redaction middleware, rate limiting, request-id correlation, and the deterministic v0 plan builder — entirely offline, no API key required.
@@ -134,11 +138,7 @@ Two `@pytest.mark.live` tests in [`test_live_llm_smoke.py`](src/tests/test_live_
 1. A full happy-path turn returns `truncated=False`, `error=None`, calls `get_route`, and emits both the `## Trip summary` and `## Day-by-day` headings.
 2. A follow-up turn changing `daily_km` produces a different plan and a `**What changed**` line, per the system prompt.
 
-Skipped by default. To run on demand:
-
-```bash
-RUN_LIVE_LLM=1 ANTHROPIC_API_KEY=sk-... pytest src/tests/test_live_llm_smoke.py -v
-```
+Skipped by default. `./scripts/tests.sh --live` sets `RUN_LIVE_LLM=1` and runs only the `live`-marked tests (requires `ANTHROPIC_API_KEY` in `.env`).
 
 Assertions are **structural** (headings, tool names, truncation flags), not text-equality, so the tests are resilient to model non-determinism while still catching real regressions in the system prompt or tool definitions. They're meant for nightly / on-demand runs — not the pre-commit hook.
 
@@ -237,7 +237,8 @@ Every tunable — model name, token budget, mock distance ranges, accommodation 
 
 - **Streaming responses** (SSE) so the UI shows tool calls and text incrementally — currently the user waits for the full turn.
 - **Real integrations** for at least one tool (e.g. Brouter for routing, Open-Meteo for weather) with caching + circuit breakers, keeping mocks behind a feature flag for offline dev.
-- **Persistent state** (Redis or Postgres) replacing the in-memory store, plus export formats (GPX, ICS).
+- **Conversation memory, in order of leverage.** The current store keeps the full Anthropic message history per conversation. For trip-planning that's fine at <20 turns, but tool-result blocks bloat history fast (one `get_route` is ~2 KB; three days of weather + elevation + accommodation pushes 10 KB+, all of which is replayed on every subsequent turn). I'd address this in four steps, cheapest-first — not "add Redis." (1) **Compact stale tool results** once a final plan has been emitted: the plan markdown *is* the compressed representation, so prior `tool_use` / `tool_result` pairs older than the last turn can be dropped from the replayed history. No LLM round-trip, no eval needed. (2) **Promote stable facts into structured state** by extending `TripPreferences` (bike type, fitness, ferry tolerance, rest-day cadence, daylight constraints) so they live outside the message history and survive compaction. Today only the trip basics are typed; everything else relies on prose recall. (3) **Rolling summary of older turns** triggered only past a threshold (e.g. >30 turns), with the summary itself a typed Pydantic field so it can be inspected and asserted on, not a free-form blob. (4) **Persistent backing store** (Redis first, Postgres if we need richer queries) — last, because it's a deployment story rather than a memory-quality story. The Protocol-based `ConversationStore` already makes this a one-class change. Anthropic's context-editing / memory-tool features are an implementation choice within step 3, not a separate step.
 - **Stronger preference modeling** — bike type, fitness, ferry preferences, rest-day cadence, daylight constraints — extracted by Claude into a typed Pydantic schema rather than a single free-form `notes` field.
+- **Export formats** beyond GPX — ICS (calendar), Komoot collections, Strava routes — all served from the same conversation history extractor pattern as `route.gpx`.
 - **Eval harness** — a small set of golden conversations scored against an LLM-as-judge to track regressions on the system prompt and tool definitions.
 - **Map view** in the UI rendering the route waypoints (`pydeck` or similar).

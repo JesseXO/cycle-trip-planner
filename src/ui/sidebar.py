@@ -43,7 +43,7 @@ def render() -> SidebarValues:
             st.success(f"Backend online · {info['provider']}/{info['model']}", icon="✅")
         else:
             st.error(f"Backend unreachable at {BACKEND_URL}", icon="🔌")
-            st.caption("Start with `./src/scripts/backend.sh`")
+            st.caption("Start with `./scripts/backend.sh`")
 
         st.divider()
         st.radio(

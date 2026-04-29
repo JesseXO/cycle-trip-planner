@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/.."
 source .venv/bin/activate
 
 uvicorn src.api.app:app --reload --port 8000 &
@@ -13,4 +13,3 @@ cleanup() {
 trap cleanup EXIT
 
 exec streamlit run streamlit_app.py
-

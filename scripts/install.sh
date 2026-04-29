@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 PYTHON_MIN="3.11"
 VENV_DIR=".venv"
@@ -82,4 +82,4 @@ if [ -d ".githooks" ] && [ -d ".git" ]; then
   fi
 fi
 
-log "Done. Run ./dev.sh to start the FastAPI + Streamlit stack."
+log "Done. Run ./scripts/dev.sh to start the FastAPI + Streamlit stack."
